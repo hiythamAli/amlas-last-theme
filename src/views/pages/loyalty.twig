@@ -1,0 +1,151 @@
+{#
+| Variable                             | Type          | Description                                  |
+|--------------------------------------|---------------|----------------------------------------------|
+| page                                 | Page          |                                              |
+| page.title                           | string        |                                              |
+| page.slug                            | string        |                                              |
+| loyalty                              | Loyalty       | absent when the store has no loyalty program |
+| loyalty.name                         | string        |                                              |
+| loyalty.description                  | string        |                                              |
+| loyalty.image                        | string        |                                              |
+| loyalty.points                       | Point[]       | the ways to earn — see the note below        |
+| loyalty.prizes[]                     | PrizesGroup[] | reached through `salla-loyalty`, see below   |
+| user.loyalty_points                  | ?int          |                                              |
+#}
+{#
+  T-5.10 — «نقاط الولاء».
+
+  THE PAGE IS REBUILT ON THE ACCOUNT SHELL, and the artboard is unambiguous about
+  it: `Loyalty Points Page.pdf` draws the breadcrumb «الرئيسية ‹ نقاط الولاء» with
+  T-3.02's rule beneath it, and the first card at y306 — the identical shell as
+  `Notifications Page`, `My Account Page`, `Orders In Progress` and
+  `Favorites Page`. Upstream extends `layouts.master` and opens with a
+  full-bleed gradient banner carrying a 7xl star, an animated counter and two
+  decorative stars. **None of that is drawn anywhere in the design.**
+
+  WHAT UPSTREAM DREW THAT THE ARTBOARD DOES NOT, and what happened to each:
+
+    · the gradient banner and its two `.loyalty-star` decorations — removed
+    · «طرق كسب النقاط», the ways-to-earn grid — **removed, and this is the one
+      removal that costs something.** The artboard replaces it with a single line
+      inside the balance card. Recorded in /docs/DERIVED-DECISIONS.md rather than
+      done quietly.
+    · the prize carousels — removed *from the page*, **not from the store.** They
+      are what `salla-loyalty` shows when «استبدل نقاطك» opens it, which is the
+      artboard's own redemption entry, so nothing became unreachable.
+
+  `04-components/loyalty.scss` is NOT shadowed. It styles `.loyalty__banner`,
+  `.points-ways`, `.way-item` and `.loyalty-star` — classes this page no longer
+  emits — so it simply stops applying, and 300 upstream lines stay reconcilable.
+  Same call T-3.04 made with `header.scss`.
+
+  TWO THINGS THE ARTBOARD DRAWS ARE NOT BUILT, AND NEITHER IS GUESSED AT.
+  The rate «/ 1 ريال» beside the balance, and the notice «رصيدك الحالي من النقاط
+  سينتهي قريبًا!» above the button, both need values no data source in this
+  platform exposes — a points-to-currency rate, and an expiry date for the
+  *balance* rather than for a single transaction. **Inventing either would be a
+  number on a customer's screen that nothing produced.** Both are raised for the
+  owner and recorded in /docs/DERIVED-DECISIONS.md.
+#}
+{% extends "layouts.customer" %}
+
+{% block head_scripts %}
+	<script defer src="{{ 'pages.js'|asset }}"></script>
+{% endblock %}
+
+{% block inner_content %}
+	{#
+	  THE STORE-SIDE GATE IS `loyalty` ITSELF, and it is the platform's own test
+	  rather than a theme setting. `salla.api.loyalty.isFeatureEnabled()` reads
+	  `store.features` for `loyalty-system`; Twig has no access to that array, but
+	  it does not need it — the `loyalty` object is absent when the program is,
+	  which is exactly the test upstream's own `cart.twig` uses. **Nothing is
+	  rendered and then hidden**, which is what the criterion asks.
+
+	  No `enable_loyalty` theme setting was added, though the backlog lists one.
+	  It would be a second switch for one thing, and the two would eventually
+	  disagree — the same reasoning T-7.06 recorded for `enable_stories`. Worse
+	  here: a theme toggle cannot stop the platform routing to this page, so it
+	  could only blank a page that still answers.
+	#}
+	{% if loyalty %}
+		<section class="account-panel loyalty-balance" aria-labelledby="loyalty-balance-title">
+			<h2 class="sr-only" id="loyalty-balance-title">{{ trans('theme.loyalty.balance') }}</h2>
+
+			<div class="loyalty-balance__row">
+				<span class="account-tile" aria-hidden="true">
+					{% include 'components.ui.icon' with { name: 'dollar-coin-stack', size: 'lg' } only %}
+				</span>
+
+				{#
+				  THE BALANCE IS TEXT, which is the third acceptance criterion and
+				  the reason the number is not an animated counter as upstream had
+				  it. Upstream's `.count-anime` starts every visit at `0` and
+				  climbs — so the accessible name of the balance is «0» until the
+				  animation ends, and stays «0» for anyone with reduced motion.
+				#}
+				<p class="loyalty-balance__figure">
+					<strong class="loyalty-balance__points" data-testid="store-loyalty-points-count">
+						{{ user.loyalty_points|default(0) }}
+					</strong>
+					<span class="loyalty-balance__label">{{ trans('theme.loyalty.points_earned') }}</span>
+				</p>
+			</div>
+
+			{#
+			  The merchant's own line, not the theme's. The artboard's «اكسب المزيد
+			  من النقاط واستمتع بالمزايا الحصرية.» is program copy, and the program
+			  already carries a description — so no string is invented and the
+			  merchant edits it where they edit the programme.
+			#}
+			{% if loyalty.description %}
+				<p class="loyalty-balance__note">{{ loyalty.description }}</p>
+			{% endif %}
+		</section>
+
+		{#
+		  The balance changes off this page — `salla-loyalty` runs the exchange
+		  inside its own modal — so «balance announced on change» needs somewhere
+		  for the announcement to land. `loyalty.js` fills it from the platform's
+		  own `getPoints()`.
+		#}
+		<span class="sr-only" role="status" aria-live="polite" data-loyalty-status></span>
+
+		{#
+		  The redemption entry. `salla-loyalty` is kept exactly as upstream mounts
+		  it — same element, same `customer-points`, same `slot="widget"`, same
+		  `open()` call — so the whole prize catalogue, the confirmation step and
+		  the exchange request stay the platform's. What changed is that the widget
+		  is the theme's button rather than `salla-button`, because the artboard
+		  draws the design's full-width dark control.
+		#}
+		<salla-loyalty data-testid="store-loyalty-exchange" customer-points="{{ user.loyalty_points }}">
+			<div slot="widget" class="loyalty-actions">
+				{% include 'components.ui.button' with {
+					label: trans('pages.loyalty_program.exchange_points'),
+					class: 'loyalty-actions__redeem',
+					attrs: { onclick: "document.querySelector('salla-loyalty').open();" }
+				} only %}
+			</div>
+		</salla-loyalty>
+
+		{#
+		  The history. `salla-loyalty-points-history` fetches `/balance/points` and
+		  owns the transactions, the balance, the paging and the empty state — the
+		  theme adds no request of its own. It renders a five-column table into the
+		  LIGHT DOM (Stencil encapsulation flag `0`), which is what lets
+		  `04-components/loyalty-page.scss` lay it out as the artboard's rows.
+		#}
+		<section class="account-panel loyalty-history" aria-labelledby="loyalty-history-title">
+			<h2 class="sr-only" id="loyalty-history-title">{{ trans('theme.loyalty.history') }}</h2>
+
+			<salla-loyalty-points-history data-testid="store-loyalty-history"></salla-loyalty-points-history>
+		</section>
+	{% else %}
+		{% include 'components.ui.empty-state' with {
+			icon:    'dollar-coin-stack',
+			message: trans('theme.loyalty.unavailable'),
+			testid:  'store-loyalty-unavailable'
+		} only %}
+	{% endif %}
+{% endblock %}
