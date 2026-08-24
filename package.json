@@ -6,7 +6,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/SallaApp/theme-raed.git"
+    "url": "git+https://github.com/hiythamAli/amlas-last-theme.git"
   },
   "scripts": {
     "preinstall": "npx only-allow pnpm",
